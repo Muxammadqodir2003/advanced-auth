@@ -6,7 +6,6 @@ const { generateToken } = require("../services/token.service");
 class AuthController {
   async login(req, res, next) {
     try {
-      console.log(req);
       const { email } = req.body;
       const data = await authService.login(email);
       return res.json({ email: data.email });
@@ -48,14 +47,12 @@ class AuthController {
   async refresh(req, res, next) {
     try {
       const { refreshToken } = req.cookies;
-      console.log(refreshToken, "cookie token");
       const data = await authService.refresh(refreshToken);
       res.cookie("refreshToken", data.refreshToken, {
         httpOnly: true,
         secure: true,
         maxAge: 30 * 24 * 60 * 60 * 1000,
       });
-      console.log(data.refreshToken, "new token");
       return res.json(data);
     } catch (error) {
       next(error);

@@ -75,9 +75,11 @@ class AuthService {
       throw BaseError.Unauthorized();
     }
     const payload = tokenService.validateRefreshToken(refreshToken);
-    const tokenDb = await tokenService.findToken(refreshToken);
+    const tokenDb = await tokenService.findToken(
+      refreshToken,
+      payload.deviceId
+    );
     if (!payload || !tokenDb) throw BaseError.Unauthorized();
-    console.log(tokenDb, "tokenDB");
     const currentSession = await deviceModel.findOne({
       user: payload.userId,
       _id: payload.deviceId,

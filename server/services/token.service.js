@@ -34,8 +34,8 @@ class TokenService {
     }
   }
 
-  async findToken(refreshToken) {
-    return await tokenModel.findOne({ refreshToken });
+  async findToken(refreshToken, deviceId) {
+    return await tokenModel.findOne({ refreshToken, device: deviceId });
   }
 
   async deleteToken(refreshToken) {
@@ -55,7 +55,11 @@ class TokenService {
 
   validateRefreshToken(refreshToken) {
     try {
-      return jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+      const payload = jwt.verify(
+        refreshToken,
+        process.env.REFRESH_TOKEN_SECRET
+      );
+      return payload;
     } catch (error) {
       return null;
     }
