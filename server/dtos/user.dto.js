@@ -1,14 +1,14 @@
 module.exports = class UserDto {
   id;
   email;
-  isVerifed;
+  isVerified;
   twoFactorEnabled;
   twoFactorSecret;
 
   constructor(model) {
     this.id = model._id;
     this.email = model.email;
-    this.isVerifed = model.isVerifed;
+    this.isVerified = model.isVerified;
     this.twoFactorEnabled = model.twoFactorEnabled;
   }
 };

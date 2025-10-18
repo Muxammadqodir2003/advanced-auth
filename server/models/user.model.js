@@ -6,6 +6,7 @@ const userSchema = new Schema(
     isVerified: { type: Boolean, default: false },
     twoFactorEnabled: { type: Boolean, default: false },
     twoFactorSecret: { type: String },
+    messages: [{ type: Schema.Types.ObjectId, ref: "MessageSchema" }],
   },
   { timestamps: true }
 );

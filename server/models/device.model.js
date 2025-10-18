@@ -6,7 +6,6 @@ const deviceSchema = new Schema(
     deviceName: { type: String },
     ipAddress: { type: String },
     userAgent: { type: String },
-    refreshTokenHash: { type: String, required: true },
     lastUsedAt: { type: Date, default: Date.now },
   },
   { timestamps: true }

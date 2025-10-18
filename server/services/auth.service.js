@@ -6,11 +6,37 @@ const deviceModel = require("../models/device.model");
 const UserDto = require("../dtos/user.dto");
 const DeviceDto = require("../dtos/device.dto");
 const BaseError = require("../errors/base.error");
+const messageModel = require("../models/message.model");
+const tokenModel = require("../models/token.model");
 
 class AuthService {
   async login(email) {
     await mailService.sendOtp(email);
     return { email };
+  }
+
+  async createSession(userId, req) {
+    const sessions = await deviceModel.find({ user: userId });
+
+    if (sessions.length >= 3) {
+      const oldSession = await deviceModel
+        .findOne({ user: userId })
+        .sort({ lastUsedAt: 1 });
+      if (oldSession) await deviceModel.findByIdAndDelete(oldSession._id);
+    }
+
+    const newSession = await deviceModel.create({
+      user: userId,
+      deviceName: req.headers["user-agent"],
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+    });
+    const user = await userModel.findById(userId);
+    const userDto = new UserDto(user);
+    const deviceDto = new DeviceDto(newSession);
+    const tokens = tokenService.generateToken(userDto.id, deviceDto.id);
+    await tokenService.saveToken(deviceDto.id, tokens.refreshToken);
+    return { user: userDto, device: deviceDto, ...tokens };
   }
 
   async verify(email, otp, req) {
@@ -26,115 +52,59 @@ class AuthService {
       user.isVerified = true;
       await user.save();
     }
-
-    const sessions = await deviceModel.find({ user: user._id });
-
-    if (sessions.length >= 3) {
-      const oldSession = await deviceModel
-        .findOne({ user: user._id })
-        .sort({ lastUsedAt: 1 });
-      if (oldSession) await deviceModel.findByIdAndDelete(oldSession._id);
+    if (user.twoFactorEnabled) {
+      return { message: "Otp verified" };
     }
+    const data = await this.createSession(user._id, req);
+    return data;
+  }
 
-    const tokens = tokenService.generateToken(user._id);
-    const refreshTokenHash = await bcrypt.hash(tokens.refreshToken, 10);
-    const newSession = await deviceModel.create({
-      user: user._id,
-      deviceName: req.body.deviceName || "Unknown device",
-      ipAddress: req.ip,
-      userAgent: req.headers["user-agent"],
-      refreshTokenHash,
-    });
+  async verify2FA(email, password, req) {
+    const user = await userModel.findOne({ email });
+    if (!user) throw BaseError.BadRequest("Bad authorization");
 
-    const userDto = new UserDto(user);
-    const deviceDto = new DeviceDto(newSession);
-    return { user: userDto, device: deviceDto, ...tokens };
+    const isValid = await bcrypt.compare(password, user.twoFactorSecret);
+    if (!isValid) throw BaseError.BadRequest("Password is incorrect");
+
+    const data = await this.createSession(user._id, req);
+    return data;
   }
 
   async refresh(refreshToken) {
     if (!refreshToken) {
-      throw BaseError.BadRequest("Bad authorization");
+      throw BaseError.Unauthorized();
     }
-    const { userId } = tokenService.validateRefreshToken(refreshToken);
-    if (!userId) throw BaseError.BadRequest("Invalid token");
-    const sessions = await deviceModel.find({ user: userId });
-    let validSession = null;
-    for (const s of sessions) {
-      const isMatch = await bcrypt.compare(refreshToken, s.refreshTokenHash);
-      if (isMatch) {
-        validSession = s;
-        break;
-      }
-    }
-
-    if (!validSession) throw BaseError.BadRequest("Bad authorization");
-
-    const user = validSession.user;
-    if (!user) throw BaseError.BadRequest("User not found");
-    const userDto = new UserDto(user);
-
-    const tokens = tokenService.generateToken(userDto.id);
-    const refreshTokenHash = await bcrypt.hash(tokens.refreshToken, 10);
-    await deviceModel.findByIdAndUpdate(validSession._id, {
-      refreshTokenHash,
-      lastUsedAt: new Date(),
+    const payload = tokenService.validateRefreshToken(refreshToken);
+    const tokenDb = await tokenService.findToken(refreshToken);
+    if (!payload || !tokenDb) throw BaseError.Unauthorized();
+    console.log(tokenDb, "tokenDB");
+    const currentSession = await deviceModel.findOne({
+      user: payload.userId,
+      _id: payload.deviceId,
     });
-    return { validSession, ...tokens };
-  }
 
-  async addTwoFactorAuth(userId, password) {
-    const user = await userModel.findById(userId);
-    if (!user) {
-      throw BaseError.BadRequest("User is not found");
-    }
-    const hashedPassword = await bcrypt.hash(password, 10);
-    await userModel.findByIdAndUpdate(
-      userId,
-      {
-        twoFactorEnabled: true,
-        twoFactorSecret: hashedPassword,
-      },
-      { new: true }
-    );
-    return 200;
+    if (!currentSession) throw BaseError.Unauthorized();
+    const user = await userModel.findOne({ _id: currentSession.user });
+    if (!user) throw BaseError.BadRequest("User not found");
+
+    const deviceDto = new DeviceDto(currentSession);
+    const userDto = new UserDto(user);
+    const tokens = tokenService.generateToken(userDto.id, deviceDto.id);
+    await tokenService.saveToken(deviceDto.id, tokens.refreshToken);
+    return { user: userDto, device: deviceDto, ...tokens };
   }
 
   async logoutOne(deviceId, userId) {
-    await deviceModel.findOneAndDelete({ _id: deviceId, user: userId });
+    await tokenModel.findOneAndDelete({ device: deviceId });
+    await deviceModel.findByIdAndDelete(deviceId);
   }
 
   async logoutAll(userId) {
     await deviceModel.deleteMany({ user: userId });
   }
 
-  async forgotPassword(email) {
-    if (!email) throw BaseError.BadRequest("Email is required");
-    const user = await userModel.findOne({ email });
-    if (!user) {
-      throw BaseError.BaseError("User not found");
-    }
-    const userDto = new UserDto(user);
-    const tokens = tokenService.generateToken(userDto.id);
-    await mailService.sendRecoveryUrl(
-      email,
-      `${process.env.CLIENT_URL}/recovery-account/${tokens.accessToken}`
-    );
-  }
-
-  async recoveryAccount(token, password) {
-    if (!token) {
-      throw BaseError.BadRequest("Something went wrong with token");
-    }
-    const userId = tokenService.validateAccessToken(token);
-    if (!userId) {
-      throw BaseError.BadRequest("Expired access to your account");
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    await userModel.findByIdAndUpdate(userId, {
-      twoFactorSecret: hashedPassword,
-    });
-    return 200;
+  async logout(userId, deviceId) {
+    await deviceModel.findOneAndDelete({ user: userId, _id: deviceId });
   }
 }
 

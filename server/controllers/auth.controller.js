@@ -6,6 +6,7 @@ const { generateToken } = require("../services/token.service");
 class AuthController {
   async login(req, res, next) {
     try {
+      console.log(req);
       const { email } = req.body;
       const data = await authService.login(email);
       return res.json({ email: data.email });
@@ -29,14 +30,14 @@ class AuthController {
     }
   }
 
-  async refresh(req, res, next) {
+  async verify2FA(req, res, next) {
     try {
-      const { refreshToken } = req.cookies;
-      const data = await authService.refresh(refreshToken);
+      const { email, password } = req.body;
+      const data = await authService.verify2FA(email, password, req);
       res.cookie("refreshToken", data.refreshToken, {
+        maxAge: 30 * 24 * 60 * 60 * 1000,
         httpOnly: true,
         secure: true,
-        maxAge: 30 * 24 * 60 * 60 * 1000,
       });
       return res.json(data);
     } catch (error) {
@@ -44,12 +45,18 @@ class AuthController {
     }
   }
 
-  async enableTwoFactorAuth(req, res, next) {
+  async refresh(req, res, next) {
     try {
-      const { password } = req.body;
-      const userId = "68ecec4ec4d0545e77454392";
-      await authService.addTwoFactorAuth(userId, password);
-      return res.json({ message: "2FA enabled" });
+      const { refreshToken } = req.cookies;
+      console.log(refreshToken, "cookie token");
+      const data = await authService.refresh(refreshToken);
+      res.cookie("refreshToken", data.refreshToken, {
+        httpOnly: true,
+        secure: true,
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+      });
+      console.log(data.refreshToken, "new token");
+      return res.json(data);
     } catch (error) {
       next(error);
     }
@@ -77,11 +84,12 @@ class AuthController {
     }
   }
 
-  async forgotPassword(req, res, next) {
+  async logout(req, res, next) {
     try {
-      const { email } = req.body;
-      await authService.forgotPassword(email);
-      return res.json({ message: "Link send" });
+      const { userId, deviceId } = req.body;
+      await authService.logout(userId, deviceId);
+      res.clearCookie("refreshToken");
+      return res.json({ message: "Logout" });
     } catch (error) {
       next(error);
     }

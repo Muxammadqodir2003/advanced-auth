@@ -1,4 +1,5 @@
 const BaseError = require("../errors/base.error");
+const deviceModel = require("../models/device.model");
 const userModel = require("../models/user.model");
 const tokenService = require("../services/token.service");
 
@@ -13,13 +14,15 @@ module.exports = async function (req, res, next) {
 
     const token = parts[1];
 
-    const { userId } = tokenService.validateAccessToken(token);
-    if (!userId) throw BaseError.Unauthorized();
+    const payload = tokenService.validateAccessToken(token);
+    if (!payload) throw BaseError.Unauthorized();
 
-    const user = await userModel.findById(userId);
-    if (!user) throw BaseError.Unauthorized();
+    const user = await userModel.findById(payload.userId);
+    const device = await deviceModel.findById(payload.deviceId);
+    if (!user | !device) throw BaseError.Unauthorized();
 
     req.user = user;
+    req.device = device;
 
     next();
   } catch (error) {

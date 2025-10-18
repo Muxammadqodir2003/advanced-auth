@@ -55,7 +55,7 @@ class MailService {
       to,
       from: process.env.SMTP_USER,
       subject: "Recovery your account",
-      html: `<h1>Please click this link to recovery account</h1>`,
+      html: `<h1>Please click this link to recovery account ${url}</a></h1>`,
     });
   }
 }

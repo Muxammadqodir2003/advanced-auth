@@ -12,12 +12,13 @@ app.use(express.json());
 app.use(
   cors({
     origin: process.env.CLIENT_URL,
-    methods: ["POST", "GET", "PUT", "DELETE"],
+    credentials: true,
   })
 );
 app.use(cookieParser());
 
-app.use("/api", require("./routes/index"));
+app.use("/api", require("./routes/auth.route"));
+app.use("/api", require("./routes/user.route"));
 
 app.use(errorMiddleware);
 

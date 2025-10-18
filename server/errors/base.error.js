@@ -1,8 +1,8 @@
 module.exports = class BaseError extends Error {
-  errors;
   status;
+  errors;
 
-  constructor(status, errors = [], message) {
+  constructor(status, message, errors = []) {
     super(message);
     this.status = status;
     this.errors = errors;
